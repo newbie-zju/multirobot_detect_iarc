@@ -7,5 +7,12 @@
   <param name="result_video_file_name" type="string" value="/home/zj/ros_workspace/src/multirobot_detect_iarc/result/raw.avi"/>
   <param name="rate" type="double" value="5.0"/>
   <param name="save_set_flag" type="bool" value="false"/>
+  
+  <param name="publish_msg_flag" type="bool" value="true"/>
+  <param name="camera_pitch" type="double" value="-36.0"/>
+  <param name="fu" type="double" value="376.629954"/>
+  <param name="fv" type="double" value="494.151786"/>
+  <param name="listen_h_flag" type="bool" value="false"/>
+  <param name="loc_h" type="double" value="1.5"/>
   </node>
 </launch>
