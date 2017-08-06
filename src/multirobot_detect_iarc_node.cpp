@@ -352,7 +352,6 @@ public:
     //publish msg
     if(publish_msg_flag)
     {
-      cout <<"publish"<<endl;
       //set RobotCamPos
       for(int i=0; i<result_classify.size(); i++)
       {
