@@ -177,6 +177,7 @@ public:
   Mat src_3,src_4,dst_3;
   gpu::GpuMat src_GPU;//gpu
   vector<Rect> location_detect;
+  vector<float> scores;
   vector<float> result_classify;
   bool save_set_flag;
   
@@ -286,6 +287,11 @@ public:
     //detect
     //HOG_descriptor_detect.detectMultiScale(src_GPU, location_detect, HitThreshold, WinStride, Size(), DetScale, 2);//gpu
     HOG_descriptor_detect.detectMultiScale(src_3, location_detect, HitThreshold, WinStride, Size(), DetScale, 2);
+    
+    //Non-maximum suppression
+    scores = get_scores(src_3, location_detect, svm_detect, descriptor_dim_detect, WinSizeDetect, HOG_descriptor_detect);
+    
+    location_detect = non_maximum_suppression(location_detect, scores, SuppressionRate);
     
     //classfy
     for(int i=0; i<location_detect.size(); i++)  
