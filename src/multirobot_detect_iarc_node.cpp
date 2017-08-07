@@ -176,8 +176,9 @@ public:
   int frame_num;
   Mat src_3,src_4,dst_3;
   gpu::GpuMat src_GPU;//gpu
-  vector<Rect> location_detect;
+  vector<Rect> location_detect, location_detect_rob, location_detect_obs;
   vector<float> scores;
+  FilterAddEstimate fae4detect;
   vector<float> result_classify;
   bool save_set_flag;
   
@@ -290,8 +291,10 @@ public:
     
     //Non-maximum suppression
     scores = get_scores(src_3, location_detect, svm_detect, descriptor_dim_detect, WinSizeDetect, HOG_descriptor_detect);
-    
     location_detect = non_maximum_suppression(location_detect, scores, SuppressionRate);
+    
+    //filter and estimate
+    location_detect = fae4detect.run(src_3, location_detect, BBOverlapRate);
     
     //classfy
     for(int i=0; i<location_detect.size(); i++)  
@@ -314,6 +317,7 @@ public:
       {
 	if (temp_result_classify == 1)//irobot
 	{
+	  location_detect_rob.push_back(location_detect[i]);
 	  rectangle(dst_3, location_detect[i], CV_RGB(0,0,255), 3);
 	  if (save_set_flag)
 	  {
@@ -326,6 +330,7 @@ public:
 	} 
 	else if (temp_result_classify == 2)//obstacle
 	{
+	  location_detect_obs.push_back(location_detect[i]);
 	  rectangle(dst_3, location_detect[i], CV_RGB(0,255,0), 3);
 	  if (save_set_flag)
 	  {
@@ -416,6 +421,8 @@ public:
     
     //detect
     location_detect.clear();
+    location_detect_rob.clear();
+    location_detect_obs.clear();
     result_classify.clear();
   }
 };

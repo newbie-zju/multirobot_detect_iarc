@@ -366,5 +366,129 @@ vector<Rect> non_maximum_suppression(const vector<Rect> &boxes, const vector<flo
   return boxes_nms;
 }
 
+// filter noise boxes, add omission boxes, estimate velocity of boxes
+class FilterAddEstimate
+{
+public:
+  vector<Rect> boxes_no_filter, boxes_no_filter_last;
+  vector<Rect> boxes_filter, boxes_filter_last;
+  vector<Rect> boxes_filter_stable;
+  vector<RobotMessage> boxes_filter_messages, boxes_filter_stable_messages, boxes_filter_messages_last, boxes_filter_messages_last2;
+  vector<float> boxes_velocity;
+  LabelRobot label_boxes;
+  
+  FilterAddEstimate(void)
+  {
+    label_boxes = LabelRobot(50, 10);
+  }
+  /*
+  FilterAndEstimate(const vector<Rect> &boxes0)
+  {
+    boxes.assign(boxes0.begin(), boxes0.end());
+    boxes_last.assign(boxes0.begin(), boxes0.end());
+  }
+  */
+  ~FilterAddEstimate(){}
+  
+  vector<Rect> run(const Mat & src, const vector<Rect> &boxes0, float bbOverlap_rate)
+  {
+    boxes_filter.assign(boxes0.begin(), boxes0.end());
+    boxes_no_filter.assign(boxes0.begin(), boxes0.end());
+    
+    //filter noise boxes
+    for(int i = boxes_filter.size() - 1; i > -1; i--)
+    {
+      bool delete_flag = true;
+      for(int j = 0; j < boxes_no_filter_last.size(); j++)
+      {
+	if(bbOverlap(boxes_filter[i], boxes_no_filter_last[j]) > bbOverlap_rate)
+	{
+	  delete_flag = false;
+	  break;
+	}
+      }
+      if(delete_flag)
+	boxes_filter.erase(boxes_filter.begin() + i);
+    }
+    
+    //label boxes
+    boxes_filter_messages.clear();
+    for(int i = 0; i < boxes_filter.size(); i++)
+      boxes_filter_messages.insert(boxes_filter_messages.end(), RobotMessage(boxes_filter[i]));
+    label_boxes.input(boxes_filter_messages);
+    label_boxes.getLabel(boxes_filter_messages);
+    
+    //get stable boxes (label exist in last frame)
+    boxes_filter_stable.assign(boxes_filter.begin(), boxes_filter.end());
+    boxes_filter_stable_messages.assign(boxes_filter_messages.begin(), boxes_filter_messages.end());
+    
+    for(int i = boxes_filter_stable_messages.size() - 1; i > -1; i--)
+    {
+      bool delete_flag = true;
+      for(int j = 0; j < boxes_filter_messages_last.size(); j++)
+      {
+	if(boxes_filter_stable_messages[i].label == boxes_filter_messages_last[j].label)
+	{
+	  delete_flag = false;
+	  break;
+	}
+      }
+      if(delete_flag)
+      {
+	boxes_filter_stable.erase(boxes_filter_stable.begin() + i);
+	boxes_filter_stable_messages.erase(boxes_filter_stable_messages.begin() + i);
+      }
+    }
+    
+    //add omission boxes
+    for(int i = boxes_filter_messages_last.size() - 1; i > -1; i--)
+    {
+      bool exist_in_this = false;
+      for(int j = boxes_filter_stable_messages.size() - 1; j > -1; j--)
+      {
+	if(boxes_filter_messages_last[i].label == boxes_filter_stable_messages[j].label)
+	{
+	  exist_in_this = true;
+	  break;
+	}
+      }
+      if(!exist_in_this)
+      {
+	for(int k = boxes_filter_messages_last2.size() - 1; k > -1; k--)
+	{
+	  if(boxes_filter_messages_last[i].label == boxes_filter_messages_last2[k].label)
+	  {
+	    int box_x = 2 * boxes_filter_messages_last[i].location_image.x - boxes_filter_messages_last2[k].location_image.x;
+	    int box_y = 2 * boxes_filter_messages_last[i].location_image.y - boxes_filter_messages_last2[k].location_image.y;
+	    int box_width = boxes_filter_messages_last[i].location_image.width;
+	    int box_height = boxes_filter_messages_last[i].location_image.height;
+	    if(box_x > 0 & box_x + box_width < src.cols & box_y > 0 & box_y + box_height < src.rows)
+	    {
+	      boxes_filter_stable.push_back(Rect(box_x, box_y, box_width, box_height));
+	      boxes_filter_stable_messages.push_back(RobotMessage(Rect(box_x, box_y, box_width, box_height)));
+	    }
+	    break;
+	  }
+	}
+      }
+    }
+    
+    //estimate velocity
+    
+    
+    ////boxes_velocity;
+    
+    //handle last
+    boxes_filter_last.assign(boxes_filter.begin(), boxes_filter.end());
+    boxes_no_filter_last.assign(boxes_no_filter.begin(), boxes_no_filter.end());
+    boxes_filter_messages_last2.assign(boxes_filter_messages_last.begin(), boxes_filter_messages_last.end());//last_last
+    boxes_filter_messages_last.assign(boxes_filter_messages.begin(), boxes_filter_messages.end());
+    
+    return boxes_filter_stable;
+  }
+};
+
+
+
 
 

@@ -58,6 +58,8 @@
 #define WinStride Size(8,8)	//it must be the integer times of the block stride in HOG descriptor
 #define DetScale 1.1		//reduced proportion of image every time
 #define SuppressionRate 0.5     //value for non maximum suppression
+#define BBOverlapRate 0.2	//BBOverlapRate for filter
+
 
 //#define TestImage "../Data/TestImage/13.jpg"
 //#define ResultImage "../Data/Result/13.jpg"
