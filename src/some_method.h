@@ -1,6 +1,4 @@
 #include <iostream>  
-#include <fstream>  
-#include <strstream>
 #include <opencv2/core/core.hpp>  
 #include <opencv2/highgui/highgui.hpp>  
 #include <opencv2/imgproc/imgproc.hpp>  
@@ -285,19 +283,12 @@ public:
 
   ~LabelRobot(){}
 
-  void input(const vector<RobotMessage> &input_irobots)
+  vector<RobotMessage> getLabel(const vector<RobotMessage> &input_robots)
   {
-    robots.clear();
-    robots.insert(robots.end(), input_irobots.begin(), input_irobots.end());
-  }
-
-  void getLabel(vector<RobotMessage> &output_robots)
-  {
+    robots.assign(input_robots.begin(), input_robots.end());
     labelRobot();
-    output_robots.clear();
-    output_robots.insert(output_robots.end(), robots.begin(), robots.end());
-    robots_last.clear();
-    robots_last.insert(robots_last.end(), robots.begin(), robots.end());
+    robots_last.assign(robots.begin(), robots.end());
+    return robots;
   }
 
 private:
@@ -473,18 +464,16 @@ vector<Rect> non_maximum_suppression(const vector<Rect> &boxes, const vector<flo
   return boxes_nms;
 }
 
-// filter noise boxes, add omission boxes, estimate velocity of boxes
-class FilterAddEstimate
+// filter noise boxes, add omission boxes
+class FilterAdd
 {
 public:
   vector<Rect> boxes_no_filter, boxes_no_filter_last;
-  vector<Rect> boxes_filter, boxes_filter_last;
-  vector<Rect> boxes_filter_stable;
+  vector<Rect> boxes_filter;
   vector<RobotMessage> boxes_filter_messages, boxes_filter_stable_messages, boxes_filter_messages_last, boxes_filter_messages_last2;
-  vector<float> boxes_velocity;
   LabelRobot label_boxes;
   
-  FilterAddEstimate(void)
+  FilterAdd(void)
   {
     label_boxes = LabelRobot(50, 10);
   }
@@ -495,9 +484,9 @@ public:
     boxes_last.assign(boxes0.begin(), boxes0.end());
   }
   */
-  ~FilterAddEstimate(){}
+  ~FilterAdd(){}
   
-  vector<Rect> run(const Mat & src, const vector<Rect> &boxes0, float bbOverlap_rate)
+  vector<RobotMessage> run(const Mat & src, const vector<Rect> &boxes0, float bbOverlap_rate)
   {
     boxes_filter.assign(boxes0.begin(), boxes0.end());
     boxes_no_filter.assign(boxes0.begin(), boxes0.end());
@@ -522,11 +511,9 @@ public:
     boxes_filter_messages.clear();
     for(int i = 0; i < boxes_filter.size(); i++)
       boxes_filter_messages.insert(boxes_filter_messages.end(), RobotMessage(boxes_filter[i]));
-    label_boxes.input(boxes_filter_messages);
-    label_boxes.getLabel(boxes_filter_messages);
+    boxes_filter_messages = label_boxes.getLabel(boxes_filter_messages);
     
     //get stable boxes (label exist in last frame)
-    boxes_filter_stable.assign(boxes_filter.begin(), boxes_filter.end());
     boxes_filter_stable_messages.assign(boxes_filter_messages.begin(), boxes_filter_messages.end());
     
     for(int i = boxes_filter_stable_messages.size() - 1; i > -1; i--)
@@ -542,7 +529,6 @@ public:
       }
       if(delete_flag)
       {
-	boxes_filter_stable.erase(boxes_filter_stable.begin() + i);
 	boxes_filter_stable_messages.erase(boxes_filter_stable_messages.begin() + i);
       }
     }
@@ -571,7 +557,6 @@ public:
 	    int box_height = boxes_filter_messages_last[i].location_image.height;
 	    if(box_x > 0 & box_x + box_width < src.cols & box_y > 0 & box_y + box_height < src.rows)
 	    {
-	      boxes_filter_stable.push_back(Rect(box_x, box_y, box_width, box_height));
 	      boxes_filter_stable_messages.push_back(RobotMessage(Rect(box_x, box_y, box_width, box_height)));
 	    }
 	    break;
@@ -580,18 +565,13 @@ public:
       }
     }
     
-    //estimate velocity
-    
-    
-    ////boxes_velocity;
-    
     //handle last
-    boxes_filter_last.assign(boxes_filter.begin(), boxes_filter.end());
     boxes_no_filter_last.assign(boxes_no_filter.begin(), boxes_no_filter.end());
     boxes_filter_messages_last2.assign(boxes_filter_messages_last.begin(), boxes_filter_messages_last.end());//last_last
     boxes_filter_messages_last.assign(boxes_filter_messages.begin(), boxes_filter_messages.end());
     
-    return boxes_filter_stable;
+    //return boxes_filter_stable;
+    return boxes_filter_stable_messages;
   }
 };
 

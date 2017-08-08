@@ -7,8 +7,6 @@
 #include <opencv2/highgui/highgui.hpp>
 
 #include <iostream>  
-#include <fstream>  
-#include <strstream>
 #include <opencv2/core/core.hpp>  
 #include <opencv2/objdetect/objdetect.hpp>  
 #include <opencv2/ml/ml.hpp>  
@@ -23,8 +21,6 @@ using namespace cv;
 using namespace std;
 
 
-
-
 class MultirobotDetect
 {
 public:
@@ -36,7 +32,6 @@ public:
   string subscribed_topic;
   ros::Publisher msg_pub;
   //PositionEstimate
-  bool publish_msg_flag;
   PositionEstimate pe;
   multirobot_detect_iarc::RobotCamPos rcp;
   int rob_pub_num, obs_pub_num;
@@ -71,11 +66,11 @@ public:
   int frame_num;
   Mat src_3,src_4,dst_3;
   gpu::GpuMat src_GPU;//gpu
-  vector<Rect> location_detect, location_detect_rob, location_detect_obs;
+  vector<Rect> location_detect;
+  vector<RobotMessage> detect_message, detect_rob_message, detect_obs_message;
   vector<float> scores;
-  FilterAddEstimate fae4detect;
+  FilterAdd fa4detect;
   vector<float> result_classify;
-  bool save_set_flag;
   
   MultirobotDetect(PositionEstimate pe0):
   it_(nh_),//intial it_
@@ -88,7 +83,6 @@ public:
     msg_pub  = nh_.advertise<multirobot_detect_iarc::RobotCamPos>("/robot_cam_position", 10);
     //PositionEstimate
     pe = pe0;
-    if(!nh_image_param.getParam("publish_msg_flag", publish_msg_flag))publish_msg_flag = false;
     rob_pub_num = sizeof(rcp.rob_cam_pos_x) / sizeof(rcp.rob_cam_pos_x[0]);
     obs_pub_num = sizeof(rcp.obs_cam_pos_x) / sizeof(rcp.obs_cam_pos_x[0]);
     //svm
@@ -137,8 +131,6 @@ public:
     if(!nh_image_param.getParam("result_video_file_name", result_video_file_name))result_video_file_name = "/home/ubuntu/ros_my_workspace/src/multirobot_detect/result/a544.avi";
     //frame
     frame_num = 1;
-    if(!nh_image_param.getParam("save_set_flag", save_set_flag))save_set_flag = false;
-    
   }
   
   ~MultirobotDetect()
@@ -189,99 +181,75 @@ public:
     location_detect = non_maximum_suppression(location_detect, scores, SuppressionRate);
     
     //filter and estimate
-    location_detect = fae4detect.run(src_3, location_detect, BBOverlapRate);
+    detect_message = fa4detect.run(src_3, location_detect, BBOverlapRate);
     
     //classfy
-    for(int i=0; i<location_detect.size(); i++)  
+    for(int i=0; i<detect_message.size(); i++)  
     {
-      cout<<"width:"<<location_detect[i].width<<"  height:"<<location_detect[i].height<<endl;
+      cout<<"width:"<<detect_message[i].location_image.width<<"  height:"<<detect_message[i].location_image.height<<endl;
+      cout<<"label:"<<detect_message[i].label<<endl;
       vector<float> descriptor_classify;
       Mat descriptor_mat_classify(1, descriptor_dim_classify, CV_32FC1);
       Mat src_classify;
       
-      resize(src_3(location_detect[i]),src_classify,WinSizeClassify);
+      resize(src_3(detect_message[i].location_image),src_classify,WinSizeClassify);
       HOG_descriptor_classify.compute(src_classify,descriptor_classify);
       for(int j=0; j<descriptor_dim_classify; j++)  
 	descriptor_mat_classify.at<float>(0,j) = descriptor_classify[j];
       float temp_result_classify = svm_classify.predict(descriptor_mat_classify);
-      cout<<temp_result_classify;
       result_classify.push_back(temp_result_classify);
       
       //label the robot for (save video, show video, save set)
-      if(save_result_video_flag | show_video_flag | save_set_flag)
+      if(save_result_video_flag | show_video_flag)
       {
 	if (temp_result_classify == 1)//irobot
 	{
-	  location_detect_rob.push_back(location_detect[i]);
-	  rectangle(dst_3, location_detect[i], CV_RGB(0,0,255), 3);
-	  if (save_set_flag)
-	  {
-	    strstream ss;
-	    string s;
-	    ss<<ResultVideoFile_1<<1000*frame_num+i<<".jpg";
-	    ss>>s;
-	    imwrite(s,src_3(location_detect[i]));
-	  }
+	  detect_rob_message.push_back(detect_message[i]);
+	  rectangle(dst_3, detect_message[i].location_image, CV_RGB(0,0,255), 3);
 	} 
 	else if (temp_result_classify == 2)//obstacle
 	{
-	  location_detect_obs.push_back(location_detect[i]);
-	  rectangle(dst_3, location_detect[i], CV_RGB(0,255,0), 3);
-	  if (save_set_flag)
-	  {
-	    strstream ss;
-	    string s;
-	    ss<<ResultVideoFile_2<<1000*frame_num+i<<".jpg";
-	    ss>>s;
-	    imwrite(s,src_3(location_detect[i]));
-	  }
+	  detect_obs_message.push_back(detect_message[i]);
+	  rectangle(dst_3, detect_message[i].location_image, CV_RGB(0,255,0), 3);
 	}
 	else if (temp_result_classify ==3)//background
 	{
-	  rectangle(dst_3, location_detect[i], Scalar(0,0,255), 3);
-	  if (save_set_flag)
-	  {
-	    strstream ss;
-	    string s;
-	    ss<<ResultVideoFile_3<<1000*frame_num+i<<".jpg";
-	    ss>>s;
-	    imwrite(s,src_3(location_detect[i]));
-	  }
+	  rectangle(dst_3, detect_message[i].location_image, Scalar(0,0,255), 3);
 	}
 	else//other
 	{
-	  rectangle(dst_3, location_detect[i], Scalar(255,255,255), 3);
+	  rectangle(dst_3, detect_message[i].location_image, Scalar(255,255,255), 3);
 	}
       }
     }
     
-    //publish msg
-    if(publish_msg_flag)
+    //set RobotCamPos
+    for(int i = 0; i<min(int(detect_rob_message.size()), rob_pub_num); i++)//irobot
     {
-      //set RobotCamPos
-      for(int i=0; i<result_classify.size(); i++)
-      {
-	if (result_classify[i] == 1 && rcp.rob_num < rob_pub_num)//irobot
-	{
-	  rcp.exist_rob_flag = true;
-	  pe.getEstimate(location_detect[i].x, location_detect[i].y, location_detect[i].width, location_detect[i].height, double(src_3.cols), double(src_3.rows));
-	  rcp.rob_cam_pos_x[rcp.rob_num] = pe.robot_mycam_x;
-	  rcp.rob_cam_pos_y[rcp.rob_num] = pe.robot_mycam_y;
-	  rcp.rob_num++;
-	}
-	else if (result_classify[i] == 2 && rcp.obs_num < obs_pub_num)//obstacle
-	{
-	  rcp.exist_obs_flag = true;
-	  pe.getEstimate(location_detect[i].x, location_detect[i].y, location_detect[i].width, location_detect[i].height, double(src_3.cols), double(src_3.rows));
-	  rcp.obs_cam_pos_x[rcp.obs_num] = pe.robot_mycam_x;
-	  rcp.obs_cam_pos_y[rcp.obs_num] = pe.robot_mycam_y;
-	  rcp.obs_num ++;
-	}
-      }
+      rcp.exist_rob_flag = true;
+      //estimate position
+      pe.getEstimate(detect_rob_message[i].location_image.x, detect_rob_message[i].location_image.y, detect_rob_message[i].location_image.width, detect_rob_message[i].location_image.height, double(src_3.cols), double(src_3.rows));
+      rcp.rob_cam_pos_x[rcp.rob_num] = pe.robot_mycam_x;
+      rcp.rob_cam_pos_y[rcp.rob_num] = pe.robot_mycam_y;
+      //estimate velocity
       
-      //publish
-      msg_pub.publish(rcp);
+      rcp.rob_num++;
     }
+    for(int i = 0; i<min(int(detect_obs_message.size()), obs_pub_num); i++)//obstacle
+    {
+      rcp.exist_obs_flag = true;
+      //estimate position
+      pe.getEstimate(detect_obs_message[i].location_image.x, detect_obs_message[i].location_image.y, detect_obs_message[i].location_image.width, detect_obs_message[i].location_image.height, double(src_3.cols), double(src_3.rows));
+      rcp.obs_cam_pos_x[rcp.obs_num] = pe.robot_mycam_x;
+      rcp.obs_cam_pos_y[rcp.obs_num] = pe.robot_mycam_y;
+      //estimate velocity
+      
+      rcp.obs_num++;
+    }
+    
+    
+    //publish
+    msg_pub.publish(rcp);
     
     //save and show video
     if(save_result_video_flag)
@@ -297,7 +265,7 @@ public:
   }
   
   void resetState()
-  { 
+  {
     //PositionEstimate
     rcp.exist_rob_flag = false;
     rcp.exist_obs_flag = false;
@@ -316,8 +284,9 @@ public:
     
     //detect
     location_detect.clear();
-    location_detect_rob.clear();
-    location_detect_obs.clear();
+    detect_message.clear();
+    detect_rob_message.clear();
+    detect_obs_message.clear();
     result_classify.clear();
   }
 };

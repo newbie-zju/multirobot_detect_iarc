@@ -68,9 +68,9 @@
 //#define ResultImageFile_3 "..\\Data\\Result\\13-3\\"
 //#define TestVideo "/home/ubuntu/ros_my_workspace/src/multirobot_detect/data/test_video/a544.avi"
 //#define ResultVideo "/home/ubuntu/ros_my_workspace/src/multirobot_detect/data/result/a544.avi"
-#define ResultVideoFile_1 "..\\Data\\Result\\1-1\\"
-#define ResultVideoFile_2 "..\\Data\\Result\\1-2\\"
-#define ResultVideoFile_3 "..\\Data\\Result\\1-3\\"
+//#define ResultVideoFile_1 "..\\Data\\Result\\1-1\\"
+//#define ResultVideoFile_2 "..\\Data\\Result\\1-2\\"
+//#define ResultVideoFile_3 "..\\Data\\Result\\1-3\\"
 
 //#define IrobotSetFile "../Data/IrobotSet/"
 //#define ObstacleSetFile "../Data/ObstacleSet/"
