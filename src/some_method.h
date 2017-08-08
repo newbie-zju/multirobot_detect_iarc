@@ -81,153 +81,6 @@ void setHOG(MySVM &detectSvm, HOGDescriptor &detectHOG)
   return;
 }
 
-class PositionEstimate
-{
-public:
-  //node
-  ros::NodeHandle nh;
-  ros::NodeHandle nh_param;
-  //ros::Subscriber sub_loc;//dji_sdk
-  //robot and image parameter
-  int robot_x, robot_y, robot_width, robot_height, robot_center_x, robot_center_y;
-  double image_width, image_height;
-  //LocalPosition
-  bool listen_h_flag;
-  double loc_h;
-  //camera
-  double camera_pitch;
-  double fu,fv;
-  //estimate
-  float c2r_x;//camera 2 robot, camera frame
-  float c2r_y;
-  float gu, gv, pu, pv, lu, lv, alpha, yo, h;
-  double robot_mycam_x, robot_mycam_y;
-  
-  PositionEstimate():
-  nh_param("~")
-  {
-    //node
-    //sub_loc = nh.subscribe("/dji_sdk/local_position", 10, &PositionEstimate::localPositionCallback,this);//dji_sdk
-    //camera
-    if(!nh_param.getParam("camera_pitch", camera_pitch))camera_pitch = 36.0;
-    if(!nh_param.getParam("fu", fu))fu = 376.629954;
-    if(!nh_param.getParam("fv", fv))fv = 494.151786;
-    //LocalPosition
-    if(!nh_param.getParam("listen_h_flag", listen_h_flag))listen_h_flag = true;
-    if(!nh_param.getParam("loc_h", loc_h))loc_h = 1.5;
-  }
-  
-  ~PositionEstimate(){}
-  
-  void getEstimate(int robot_x0, int robot_y0, int robot_width0, int robot_height0, double image_width0, double image_height0)
-  {
-    //set robot and image parameter
-    robot_x = robot_x0;
-    robot_y = robot_y0;
-    robot_width = robot_width0;
-    robot_height = robot_height0;
-    image_width = image_width0;
-    image_height = image_height0;
-    robot_center_x = robot_x + robot_width / 2;
-    robot_center_y = robot_y + robot_height / 2;
-    
-    //runEstimate
-    if(camera_pitch>-90.0 && camera_pitch<30.0 && loc_h>0.5 && loc_h<4)
-    {
-      this->runEstimate();
-    }
-    else
-    {
-      cout<<"camera_pitch or loc_h is error"<<endl;
-      cout<<"camera_pitch: "<<camera_pitch<<endl;
-      cout<<"loc_h: "<<loc_h<<endl;
-    }
-  }
-  /*
-  void localPositionCallback(const dji_sdk::LocalPosition::ConstPtr& msg)//dji_sdk
-  {
-    if(listen_h_flag)
-      loc_h = msg->z;
-  }
-  */
-  
-private:
-  void runEstimate()
-  {
-    //c2r_x
-    gv = image_height / 2.0;
-    pv = robot_center_y;
-    yo = camera_pitch / 360.0 * (2.0*M_PI);
-    h = loc_h;
-    
-    alpha = atan((gv - pv) /fv);
-    c2r_x = tan(alpha + yo + M_PI/2.0) * h;
-    
-    //c2r_y
-    lu = robot_center_x;
-    pu = image_width / 2.0;
-    
-    c2r_y = (lu-pu)*cos(alpha)*h / (fu*cos(alpha+yo+M_PI/2.0));
-    /*
-    cout<<"gv: "<<gv<<endl;
-    cout<<"pv: "<<pv<<endl;
-    cout<<"yo: "<<yo<<endl;
-    cout<<"h: "<<h<<endl;
-    cout<<"(gv - pv) /fv: "<<(gv - pv) /fv<<endl;
-    cout<<"alpha: "<<alpha<<endl;
-    cout<<"c2r_x: "<<c2r_x<<endl;
-    cout<<"lu: "<<lu<<endl;
-    cout<<"pu: "<<pu<<endl;
-    cout<<"(lu-pu)*cos(alpha)*h: "<<(lu-pu)*cos(alpha)*h<<endl;
-    cout<<"(fu*cos(alpha+yo)): "<<(fu*cos(alpha+yo))<<endl;
-    cout<<"c2r_y: "<<c2r_y<<endl;
-    */
-    //publish
-    robot_mycam_x = c2r_x;
-    robot_mycam_y = c2r_y;
-  }
-};
-
-//Train: create a disorder array (elements are integer from zero to n-1)
-void random(int a[], int n)
-{
-  for (int nu = 0;nu<n;nu++)
-  {
-    a[nu] = nu;
-  }
-  int index, tmp, i;
-  srand(time(NULL));
-  for (i = 0; i <n; i++)
-  {
-    index = rand() % (n - i) + i;
-    if (index != i)
-    {
-      tmp = a[i];
-      a[i] = a[index];
-      a[index] = tmp;
-    }
-  }
-}
-
-//Train: initial type array (0-train,1-vaild,2-test)
-void typeHandle(int arr[],int setNo,int trainNo,int vaildNo)
-{
-  for (int i = 0;i<setNo;i++)
-  {
-    if (arr[i]<trainNo)
-    {
-      arr[i] = 0;
-    } 
-    else if(arr[i]<trainNo + vaildNo)
-    {
-      arr[i] = 1;
-    }
-    else
-    {
-      arr[i] = 2;
-    }
-  }
-}
 
 //Label: struct for robot message
 struct RobotMessage
@@ -370,6 +223,189 @@ private:
     }
   }
 };
+
+class PositionEstimate
+{
+public:
+  //node
+  ros::NodeHandle nh;
+  ros::NodeHandle nh_param;
+  //ros::Subscriber sub_loc;//dji_sdk
+  //robot and image parameter
+  int robot_x, robot_y, robot_width, robot_height, robot_center_x, robot_center_y;
+  double image_width, image_height;
+  //LocalPosition
+  bool listen_h_flag;
+  double loc_h;
+  //camera
+  double camera_pitch;
+  double fu,fv;
+  //estimate
+  float c2r_x;//camera 2 robot, camera frame
+  float c2r_y;
+  float gu, gv, pu, pv, lu, lv, alpha, yo, h;
+  double robot_mycam_x, robot_mycam_y;
+  
+  PositionEstimate():
+  nh_param("~")
+  {
+    //node
+    //sub_loc = nh.subscribe("/dji_sdk/local_position", 10, &PositionEstimate::localPositionCallback,this);//dji_sdk
+    //camera
+    if(!nh_param.getParam("camera_pitch", camera_pitch))camera_pitch = 36.0;
+    if(!nh_param.getParam("fu", fu))fu = 376.629954;
+    if(!nh_param.getParam("fv", fv))fv = 494.151786;
+    //LocalPosition
+    if(!nh_param.getParam("listen_h_flag", listen_h_flag))listen_h_flag = true;
+    if(!nh_param.getParam("loc_h", loc_h))loc_h = 1.5;
+  }
+  
+  ~PositionEstimate(){}
+  
+  void getEstimate(int robot_x0, int robot_y0, int robot_width0, int robot_height0, double image_width0, double image_height0)
+  {
+    //set robot and image parameter
+    robot_x = robot_x0;
+    robot_y = robot_y0;
+    robot_width = robot_width0;
+    robot_height = robot_height0;
+    image_width = image_width0;
+    image_height = image_height0;
+    robot_center_x = robot_x + robot_width / 2;
+    robot_center_y = robot_y + robot_height / 2;
+    
+    //runEstimate
+    if(camera_pitch>-90.0 && camera_pitch<30.0 && loc_h>0.5 && loc_h<4)
+    {
+      this->runEstimate();
+    }
+    else
+    {
+      cout<<"camera_pitch or loc_h is error"<<endl;
+      cout<<"camera_pitch: "<<camera_pitch<<endl;
+      cout<<"loc_h: "<<loc_h<<endl;
+    }
+  }
+  /*
+  void localPositionCallback(const dji_sdk::LocalPosition::ConstPtr& msg)//dji_sdk
+  {
+    if(listen_h_flag)
+      loc_h = msg->z;
+  }
+  */
+  
+private:
+  void runEstimate()
+  {
+    //c2r_x
+    gv = image_height / 2.0;
+    pv = robot_center_y;
+    yo = camera_pitch / 360.0 * (2.0*M_PI);
+    h = loc_h;
+    
+    alpha = atan((gv - pv) /fv);
+    c2r_x = tan(alpha + yo + M_PI/2.0) * h;
+    
+    //c2r_y
+    lu = robot_center_x;
+    pu = image_width / 2.0;
+    
+    c2r_y = (lu-pu)*cos(alpha)*h / (fu*cos(alpha+yo+M_PI/2.0));
+    /*
+    cout<<"gv: "<<gv<<endl;
+    cout<<"pv: "<<pv<<endl;
+    cout<<"yo: "<<yo<<endl;
+    cout<<"h: "<<h<<endl;
+    cout<<"(gv - pv) /fv: "<<(gv - pv) /fv<<endl;
+    cout<<"alpha: "<<alpha<<endl;
+    cout<<"c2r_x: "<<c2r_x<<endl;
+    cout<<"lu: "<<lu<<endl;
+    cout<<"pu: "<<pu<<endl;
+    cout<<"(lu-pu)*cos(alpha)*h: "<<(lu-pu)*cos(alpha)*h<<endl;
+    cout<<"(fu*cos(alpha+yo)): "<<(fu*cos(alpha+yo))<<endl;
+    cout<<"c2r_y: "<<c2r_y<<endl;
+    */
+    //publish
+    robot_mycam_x = c2r_x;
+    robot_mycam_y = c2r_y;
+  }
+};
+
+class VelocityEstimate
+{
+public:
+  PositionEstimate pe;
+  double postition_mycam_x, postition_mycam_y;
+  double postition_mycam_x_last, postition_mycam_y_last;
+  double velocity_mycam_x, velocity_mycam_y;
+  double delta_img_x, delta_img_y;
+  
+  VelocityEstimate(){}
+  VelocityEstimate(const PositionEstimate &pe0)
+  {
+    pe = pe0;
+  }
+  ~VelocityEstimate(){}
+  
+  void computeVelocity(const RobotMessage &message, const RobotMessage &message_last, const Mat &src, double dt)
+  {
+    //this camPos
+    pe.getEstimate(message.location_image.x, message.location_image.y, message.location_image.width, message.location_image.height, double(src.cols), double(src.rows));
+    postition_mycam_x = pe.robot_mycam_x;
+    postition_mycam_y = pe.robot_mycam_y;
+    //last camPos
+    pe.getEstimate(message_last.location_image.x, message_last.location_image.y, message_last.location_image.width, message_last.location_image.height, double(src.cols), double(src.rows));
+    postition_mycam_x_last = pe.robot_mycam_x;
+    postition_mycam_y_last = pe.robot_mycam_y;
+    //camVel
+    velocity_mycam_x = (postition_mycam_x - postition_mycam_x_last) / dt;
+    velocity_mycam_y = (postition_mycam_y - postition_mycam_y_last) / dt;
+    //imgVel
+    delta_img_x = (message.location_image.x - message_last.location_image.x);
+    delta_img_y = (message.location_image.y - message_last.location_image.y);
+  }
+};
+
+//Train: create a disorder array (elements are integer from zero to n-1)
+void random(int a[], int n)
+{
+  for (int nu = 0;nu<n;nu++)
+  {
+    a[nu] = nu;
+  }
+  int index, tmp, i;
+  srand(time(NULL));
+  for (i = 0; i <n; i++)
+  {
+    index = rand() % (n - i) + i;
+    if (index != i)
+    {
+      tmp = a[i];
+      a[i] = a[index];
+      a[index] = tmp;
+    }
+  }
+}
+
+//Train: initial type array (0-train,1-vaild,2-test)
+void typeHandle(int arr[],int setNo,int trainNo,int vaildNo)
+{
+  for (int i = 0;i<setNo;i++)
+  {
+    if (arr[i]<trainNo)
+    {
+      arr[i] = 0;
+    } 
+    else if(arr[i]<trainNo + vaildNo)
+    {
+      arr[i] = 1;
+    }
+    else
+    {
+      arr[i] = 2;
+    }
+  }
+}
 
 //get scores
 vector<float> get_scores(Mat &src, vector<Rect> &boxes, MySVM &svm, int descriptor_dim, Size WinSize, HOGDescriptor &HOG_descriptor)
@@ -576,6 +612,18 @@ public:
 };
 
 
-
+void drawArrow(Mat& img, Point pStart, Point pEnd, int len, int alpha, Scalar& color, int thickness, int lineType)
+{
+  const double PI = 3.1415926;
+  Point arrow;
+  double angle = atan2((double)(pStart.y - pEnd.y), (double)(pStart.x - pEnd.x));
+  line(img, pStart, pEnd, color, thickness, lineType);
+  arrow.x = pEnd.x + len * cos(angle + PI * alpha / 180);
+  arrow.y = pEnd.y + len * sin(angle + PI * alpha / 180);
+  line(img, pEnd, arrow, color, thickness, lineType);
+  arrow.x = pEnd.x + len * cos(angle - PI * alpha / 180);
+  arrow.y = pEnd.y + len * sin(angle - PI * alpha / 180);
+  line(img, pEnd, arrow, color, thickness, lineType);
+}
 
 

@@ -31,8 +31,9 @@ public:
   image_transport::Subscriber image_sub_;
   string subscribed_topic;
   ros::Publisher msg_pub;
-  //PositionEstimate
+  //StateEstimate
   PositionEstimate pe;
+  VelocityEstimate ve;
   multirobot_detect_iarc::RobotCamPos rcp;
   int rob_pub_num, obs_pub_num;
   //svm
@@ -64,10 +65,11 @@ public:
   string result_video_file_name;
   //frame
   int frame_num;
+  double this_time, last_time, dt;
   Mat src_3,src_4,dst_3;
   gpu::GpuMat src_GPU;//gpu
   vector<Rect> location_detect;
-  vector<RobotMessage> detect_message, detect_rob_message, detect_obs_message;
+  vector<RobotMessage> detect_message, detect_rob_message, detect_obs_message, detect_rob_message_last, detect_obs_message_last;
   vector<float> scores;
   FilterAdd fa4detect;
   vector<float> result_classify;
@@ -81,8 +83,9 @@ public:
     // Subscrive to input video feed from "/dji_sdk/image_raw" topic, imageCb is the callback function
     image_sub_ = it_.subscribe(subscribed_topic, 1, &MultirobotDetect::imageCb, this);
     msg_pub  = nh_.advertise<multirobot_detect_iarc::RobotCamPos>("/robot_cam_position", 10);
-    //PositionEstimate
+    //StateEstimate
     pe = pe0;
+    ve = VelocityEstimate(pe);
     rob_pub_num = sizeof(rcp.rob_cam_pos_x) / sizeof(rcp.rob_cam_pos_x[0]);
     obs_pub_num = sizeof(rcp.obs_cam_pos_x) / sizeof(rcp.obs_cam_pos_x[0]);
     //svm
@@ -131,6 +134,9 @@ public:
     if(!nh_image_param.getParam("result_video_file_name", result_video_file_name))result_video_file_name = "/home/ubuntu/ros_my_workspace/src/multirobot_detect/result/a544.avi";
     //frame
     frame_num = 1;
+    this_time = 0;
+    last_time = 0;
+    dt = 1;
   }
   
   ~MultirobotDetect()
@@ -168,6 +174,10 @@ public:
     src_3.copyTo(dst_3);
     //cvtColor(src_3,src_4,CV_BGR2BGRA);//gpu
     //src_GPU.upload(src_4);//gpu
+    
+    this_time = ros::Time::now().toSec();
+    dt = this_time - last_time;
+    cout<<"dt:"<<dt<<endl;
     
     //reset
     resetState();
@@ -224,29 +234,73 @@ public:
     }
     
     //set RobotCamPos
-    for(int i = 0; i<min(int(detect_rob_message.size()), rob_pub_num); i++)//irobot
+    for(int i = 0; i < detect_rob_message.size(); i++)//irobot
     {
-      rcp.exist_rob_flag = true;
-      //estimate position
-      pe.getEstimate(detect_rob_message[i].location_image.x, detect_rob_message[i].location_image.y, detect_rob_message[i].location_image.width, detect_rob_message[i].location_image.height, double(src_3.cols), double(src_3.rows));
-      rcp.rob_cam_pos_x[rcp.rob_num] = pe.robot_mycam_x;
-      rcp.rob_cam_pos_y[rcp.rob_num] = pe.robot_mycam_y;
-      //estimate velocity
-      
-      rcp.rob_num++;
-    }
-    for(int i = 0; i<min(int(detect_obs_message.size()), obs_pub_num); i++)//obstacle
-    {
-      rcp.exist_obs_flag = true;
-      //estimate position
-      pe.getEstimate(detect_obs_message[i].location_image.x, detect_obs_message[i].location_image.y, detect_obs_message[i].location_image.width, detect_obs_message[i].location_image.height, double(src_3.cols), double(src_3.rows));
-      rcp.obs_cam_pos_x[rcp.obs_num] = pe.robot_mycam_x;
-      rcp.obs_cam_pos_y[rcp.obs_num] = pe.robot_mycam_y;
-      //estimate velocity
-      
-      rcp.obs_num++;
+      if(rcp.rob_num < rob_pub_num)
+      {
+	for(int j = 0; j < detect_rob_message_last.size(); j++)
+	{
+	  if(detect_rob_message[i].label == detect_rob_message_last[j].label)
+	  {
+	    rcp.exist_rob_flag = true;
+	    //estimate position
+	    pe.getEstimate(detect_rob_message[i].location_image.x, detect_rob_message[i].location_image.y, detect_rob_message[i].location_image.width, detect_rob_message[i].location_image.height, double(src_3.cols), double(src_3.rows));
+	    rcp.rob_cam_pos_x[rcp.rob_num] = pe.robot_mycam_x;
+	    rcp.rob_cam_pos_y[rcp.rob_num] = pe.robot_mycam_y;
+	    //estimate velocity
+	    ve.computeVelocity(detect_rob_message[i], detect_rob_message_last[j], src_3, dt);
+	    rcp.rob_cam_vel_x[rcp.rob_num] = ve.velocity_mycam_x;
+	    rcp.rob_cam_vel_y[rcp.rob_num] = ve.velocity_mycam_y;
+	    //drawArrow
+	    if(show_video_flag)
+	    {
+	      Point pStart(detect_rob_message_last[j].location_image.x - ve.delta_img_x, detect_rob_message_last[j].location_image.y - ve.delta_img_y);
+	      Point pEnd(detect_rob_message_last[j].location_image.x, detect_rob_message_last[j].location_image.y);
+	      Scalar color(0, 255, 255);
+	      drawArrow(dst_3, pStart, pEnd, 10, 30, color, 1, 4);
+	      cout<<"rob_dx"<<ve.delta_img_x<<endl;
+	      cout<<"rob_dy"<<ve.delta_img_y<<endl;
+	    }
+	    rcp.rob_num++;
+	  }
+	}
+      }
     }
     
+    for(int i = 0; i < detect_obs_message.size(); i++)//obstacle
+    {
+      if(rcp.obs_num < obs_pub_num)
+      {
+	for(int j = 0; j < detect_obs_message_last.size(); j++)
+	{
+	  if(detect_obs_message[i].label == detect_obs_message_last[j].label)
+	  {
+	    rcp.exist_obs_flag = true;
+	    //estimate position
+	    pe.getEstimate(detect_obs_message[i].location_image.x, detect_obs_message[i].location_image.y, detect_obs_message[i].location_image.width, detect_obs_message[i].location_image.height, double(src_3.cols), double(src_3.rows));
+	    rcp.obs_cam_pos_x[rcp.obs_num] = pe.robot_mycam_x;
+	    rcp.obs_cam_pos_y[rcp.obs_num] = pe.robot_mycam_y;
+	    //estimate velocity
+	    ve.computeVelocity(detect_obs_message[i], detect_obs_message_last[j], src_3, dt);
+	    rcp.obs_cam_vel_x[rcp.obs_num] = ve.velocity_mycam_x;
+	    rcp.obs_cam_vel_y[rcp.obs_num] = ve.velocity_mycam_y;
+	    cout<<"obs_dx"<<ve.delta_img_x<<endl;
+	    cout<<"obs_dy"<<ve.delta_img_y<<endl;
+	    //drawArrow
+	    if(show_video_flag)
+	    {
+	      Point pStart(detect_obs_message_last[j].location_image.x - ve.delta_img_x, detect_obs_message_last[j].location_image.y - ve.delta_img_y);
+	      Point pEnd(detect_obs_message_last[j].location_image.x, detect_obs_message_last[j].location_image.y);
+	      Scalar color(0, 255, 255);
+	      drawArrow(dst_3, pStart, pEnd, 10, 30, color, 1, 4);
+	      cout<<"rob_dx"<<ve.delta_img_x<<endl;
+	      cout<<"rob_dy"<<ve.delta_img_y<<endl;
+	    }
+	    rcp.obs_num++;
+	  }
+	}
+      }
+    }
     
     //publish
     msg_pub.publish(rcp);
@@ -262,6 +316,9 @@ public:
       imshow(RESULT_VIDEO_WINDOW_NAME, dst_3);
       waitKey(1);
     }
+    
+    //set last
+    setLast();
   }
   
   void resetState()
@@ -275,11 +332,15 @@ public:
     {
       rcp.rob_cam_pos_x[i] = 0;
       rcp.rob_cam_pos_y[i] = 0;
+      rcp.rob_cam_vel_x[i] = 0;
+      rcp.rob_cam_vel_y[i] = 0;
     }
     for(int i = 0; i < obs_pub_num; i++)
     {
       rcp.obs_cam_pos_x[i] = 0;
       rcp.obs_cam_pos_y[i] = 0;
+      rcp.obs_cam_vel_x[i] = 0;
+      rcp.obs_cam_vel_y[i] = 0;
     }
     
     //detect
@@ -288,6 +349,15 @@ public:
     detect_rob_message.clear();
     detect_obs_message.clear();
     result_classify.clear();
+  }
+  
+  void setLast()
+  {
+    //frame
+    last_time = this_time;
+    //StateEstimate
+    detect_rob_message_last.assign(detect_rob_message.begin(), detect_rob_message.end());
+    detect_obs_message_last.assign(detect_obs_message.begin(), detect_obs_message.end());
   }
 };
 
