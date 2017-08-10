@@ -77,8 +77,8 @@
 //#define BackgroundSetFile "../Data/BackgroundSet/"
 //#define HardBackgroundSetFile "../Data/HardBackgroundSet/"
 //#define SetName "0SetName.txt"
-#define DetectSvmName "/home/zj/ros_workspace/src/multirobot_detect/src/SVM_HOG_Detect.xml"
-#define ClassifySvmName "/home/zj/ros_workspace/src/multirobot_detect/src/SVM_HOG_Classify.xml"
+#define DetectSvmName "/home/zj/ros_workspace/src/multirobot_detect_iarc/src/SVM_HOG_Detect.xml"
+#define ClassifySvmName "/home/zj/ros_workspace/src/multirobot_detect_iarc/src/SVM_HOG_Classify.xml"
 
 /*
 #define TrainPerc 0.8	//proportion of train set
