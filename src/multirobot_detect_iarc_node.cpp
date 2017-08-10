@@ -7,8 +7,6 @@
 #include <opencv2/highgui/highgui.hpp>
 
 #include <iostream>  
-#include <fstream>  
-#include <strstream>
 #include <opencv2/core/core.hpp>  
 #include <opencv2/objdetect/objdetect.hpp>  
 #include <opencv2/ml/ml.hpp>  
@@ -22,113 +20,6 @@
 using namespace cv;
 using namespace std;
 
-class PositionEstimate
-{
-public:
-  //node
-  ros::NodeHandle nh;
-  ros::NodeHandle nh_param;
-  //ros::Subscriber sub_loc;//dji_sdk
-  //robot and image parameter
-  int robot_x, robot_y, robot_width, robot_height, robot_center_x, robot_center_y;
-  double image_width, image_height;
-  //LocalPosition
-  bool listen_h_flag;
-  double loc_h;
-  //camera
-  double camera_pitch;
-  double fu,fv;
-  //estimate
-  float c2r_x;//camera 2 robot, camera frame
-  float c2r_y;
-  float gu, gv, pu, pv, lu, lv, alpha, yo, h;
-  double robot_mycam_x, robot_mycam_y;
-  
-  PositionEstimate():
-  nh_param("~")
-  {
-    //node
-    //sub_loc = nh.subscribe("/dji_sdk/local_position", 10, &PositionEstimate::localPositionCallback,this);//dji_sdk
-    //camera
-    if(!nh_param.getParam("camera_pitch", camera_pitch))camera_pitch = 36.0;
-    if(!nh_param.getParam("fu", fu))fu = 376.629954;
-    if(!nh_param.getParam("fv", fv))fv = 494.151786;
-    //LocalPosition
-    if(!nh_param.getParam("listen_h_flag", listen_h_flag))listen_h_flag = true;
-    if(!nh_param.getParam("loc_h", loc_h))loc_h = 1.5;
-  }
-  
-  ~PositionEstimate(){}
-  
-  void getEstimate(int robot_x0, int robot_y0, int robot_width0, int robot_height0, double image_width0, double image_height0)
-  {
-    //set robot and image parameter
-    robot_x = robot_x0;
-    robot_y = robot_y0;
-    robot_width = robot_width0;
-    robot_height = robot_height0;
-    image_width = image_width0;
-    image_height = image_height0;
-    robot_center_x = robot_x + robot_width / 2;
-    robot_center_y = robot_y + robot_height / 2;
-    
-    //runEstimate
-    if(camera_pitch>-90.0 && camera_pitch<30.0 && loc_h>0.5 && loc_h<4)
-    {
-      this->runEstimate();
-    }
-    else
-    {
-      cout<<"camera_pitch or loc_h is error"<<endl;
-      cout<<"camera_pitch: "<<camera_pitch<<endl;
-      cout<<"loc_h: "<<loc_h<<endl;
-    }
-  }
-  /*
-  void localPositionCallback(const dji_sdk::LocalPosition::ConstPtr& msg)//dji_sdk
-  {
-    if(listen_h_flag)
-      loc_h = msg->z;
-  }
-  */
-  
-private:
-  void runEstimate()
-  {
-    //c2r_x
-    gv = image_height / 2.0;
-    pv = robot_center_y;
-    yo = camera_pitch / 360.0 * (2.0*M_PI);
-    h = loc_h;
-    
-    alpha = atan((gv - pv) /fv);
-    c2r_x = tan(alpha + yo + M_PI/2.0) * h;
-    
-    //c2r_y
-    lu = robot_center_x;
-    pu = image_width / 2.0;
-    
-    c2r_y = (lu-pu)*cos(alpha)*h / (fu*cos(alpha+yo+M_PI/2.0));
-    /*
-    cout<<"gv: "<<gv<<endl;
-    cout<<"pv: "<<pv<<endl;
-    cout<<"yo: "<<yo<<endl;
-    cout<<"h: "<<h<<endl;
-    cout<<"(gv - pv) /fv: "<<(gv - pv) /fv<<endl;
-    cout<<"alpha: "<<alpha<<endl;
-    cout<<"c2r_x: "<<c2r_x<<endl;
-    cout<<"lu: "<<lu<<endl;
-    cout<<"pu: "<<pu<<endl;
-    cout<<"(lu-pu)*cos(alpha)*h: "<<(lu-pu)*cos(alpha)*h<<endl;
-    cout<<"(fu*cos(alpha+yo)): "<<(fu*cos(alpha+yo))<<endl;
-    cout<<"c2r_y: "<<c2r_y<<endl;
-    */
-    //publish
-    robot_mycam_x = c2r_x;
-    robot_mycam_y = c2r_y;
-  }
-};
-
 
 class MultirobotDetect
 {
@@ -140,9 +31,9 @@ public:
   image_transport::Subscriber image_sub_;
   string subscribed_topic;
   ros::Publisher msg_pub;
-  //PositionEstimate
-  bool publish_msg_flag;
+  //StateEstimate
   PositionEstimate pe;
+  VelocityEstimate ve;
   multirobot_detect_iarc::RobotCamPos rcp;
   int rob_pub_num, obs_pub_num;
   //svm
@@ -174,11 +65,14 @@ public:
   string result_video_file_name;
   //frame
   int frame_num;
+  double this_time, last_time, dt;
   Mat src_3,src_4,dst_3;
   gpu::GpuMat src_GPU;//gpu
   vector<Rect> location_detect;
+  vector<RobotMessage> detect_message, detect_rob_message, detect_obs_message, detect_rob_message_last, detect_obs_message_last;
+  vector<float> scores;
+  FilterAdd fa4detect;
   vector<float> result_classify;
-  bool save_set_flag;
   
   MultirobotDetect(PositionEstimate pe0):
   it_(nh_),//intial it_
@@ -189,9 +83,9 @@ public:
     // Subscrive to input video feed from "/dji_sdk/image_raw" topic, imageCb is the callback function
     image_sub_ = it_.subscribe(subscribed_topic, 1, &MultirobotDetect::imageCb, this);
     msg_pub  = nh_.advertise<multirobot_detect_iarc::RobotCamPos>("/robot_cam_position", 10);
-    //PositionEstimate
+    //StateEstimate
     pe = pe0;
-    if(!nh_image_param.getParam("publish_msg_flag", publish_msg_flag))publish_msg_flag = false;
+    ve = VelocityEstimate(pe);
     rob_pub_num = sizeof(rcp.rob_cam_pos_x) / sizeof(rcp.rob_cam_pos_x[0]);
     obs_pub_num = sizeof(rcp.obs_cam_pos_x) / sizeof(rcp.obs_cam_pos_x[0]);
     //svm
@@ -240,8 +134,9 @@ public:
     if(!nh_image_param.getParam("result_video_file_name", result_video_file_name))result_video_file_name = "/home/ubuntu/ros_my_workspace/src/multirobot_detect/result/a544.avi";
     //frame
     frame_num = 1;
-    if(!nh_image_param.getParam("save_set_flag", save_set_flag))save_set_flag = false;
-    
+    this_time = 0;
+    last_time = 0;
+    dt = 1;
   }
   
   ~MultirobotDetect()
@@ -280,6 +175,10 @@ public:
     //cvtColor(src_3,src_4,CV_BGR2BGRA);//gpu
     //src_GPU.upload(src_4);//gpu
     
+    this_time = ros::Time::now().toSec();
+    dt = this_time - last_time;
+    cout<<"dt:"<<dt<<endl;
+    
     //reset
     resetState();
     
@@ -287,96 +186,124 @@ public:
     //HOG_descriptor_detect.detectMultiScale(src_GPU, location_detect, HitThreshold, WinStride, Size(), DetScale, 2);//gpu
     HOG_descriptor_detect.detectMultiScale(src_3, location_detect, HitThreshold, WinStride, Size(), DetScale, 2);
     
+    //Non-maximum suppression
+    scores = get_scores(src_3, location_detect, svm_detect, descriptor_dim_detect, WinSizeDetect, HOG_descriptor_detect);
+    location_detect = non_maximum_suppression(location_detect, scores, SuppressionRate);
+    
+    //filter and estimate
+    detect_message = fa4detect.run(src_3, location_detect, BBOverlapRate);
+    
     //classfy
-    for(int i=0; i<location_detect.size(); i++)  
+    for(int i=0; i<detect_message.size(); i++)  
     {
-      cout<<"width:"<<location_detect[i].width<<"  height:"<<location_detect[i].height<<endl;
+      cout<<"width:"<<detect_message[i].location_image.width<<"  height:"<<detect_message[i].location_image.height<<endl;
+      cout<<"label:"<<detect_message[i].label<<endl;
       vector<float> descriptor_classify;
       Mat descriptor_mat_classify(1, descriptor_dim_classify, CV_32FC1);
       Mat src_classify;
       
-      resize(src_3(location_detect[i]),src_classify,WinSizeClassify);
+      resize(src_3(detect_message[i].location_image),src_classify,WinSizeClassify);
       HOG_descriptor_classify.compute(src_classify,descriptor_classify);
       for(int j=0; j<descriptor_dim_classify; j++)  
 	descriptor_mat_classify.at<float>(0,j) = descriptor_classify[j];
       float temp_result_classify = svm_classify.predict(descriptor_mat_classify);
-      cout<<temp_result_classify;
       result_classify.push_back(temp_result_classify);
       
       //label the robot for (save video, show video, save set)
-      if(save_result_video_flag | show_video_flag | save_set_flag)
+      if(save_result_video_flag | show_video_flag)
       {
 	if (temp_result_classify == 1)//irobot
 	{
-	  rectangle(dst_3, location_detect[i], CV_RGB(0,0,255), 3);
-	  if (save_set_flag)
-	  {
-	    strstream ss;
-	    string s;
-	    ss<<ResultVideoFile_1<<1000*frame_num+i<<".jpg";
-	    ss>>s;
-	    imwrite(s,src_3(location_detect[i]));
-	  }
+	  detect_rob_message.push_back(detect_message[i]);
+	  rectangle(dst_3, detect_message[i].location_image, CV_RGB(0,0,255), 3);
 	} 
 	else if (temp_result_classify == 2)//obstacle
 	{
-	  rectangle(dst_3, location_detect[i], CV_RGB(0,255,0), 3);
-	  if (save_set_flag)
-	  {
-	    strstream ss;
-	    string s;
-	    ss<<ResultVideoFile_2<<1000*frame_num+i<<".jpg";
-	    ss>>s;
-	    imwrite(s,src_3(location_detect[i]));
-	  }
+	  detect_obs_message.push_back(detect_message[i]);
+	  rectangle(dst_3, detect_message[i].location_image, CV_RGB(0,255,0), 3);
 	}
 	else if (temp_result_classify ==3)//background
 	{
-	  rectangle(dst_3, location_detect[i], Scalar(0,0,255), 3);
-	  if (save_set_flag)
-	  {
-	    strstream ss;
-	    string s;
-	    ss<<ResultVideoFile_3<<1000*frame_num+i<<".jpg";
-	    ss>>s;
-	    imwrite(s,src_3(location_detect[i]));
-	  }
+	  rectangle(dst_3, detect_message[i].location_image, Scalar(0,0,255), 3);
 	}
 	else//other
 	{
-	  rectangle(dst_3, location_detect[i], Scalar(255,255,255), 3);
+	  rectangle(dst_3, detect_message[i].location_image, Scalar(255,255,255), 3);
 	}
       }
     }
     
-    //publish msg
-    if(publish_msg_flag)
+    //set RobotCamPos
+    for(int i = 0; i < detect_rob_message.size(); i++)//irobot
     {
-      cout <<"publish"<<endl;
-      //set RobotCamPos
-      for(int i=0; i<result_classify.size(); i++)
+      if(rcp.rob_num < rob_pub_num)
       {
-	if (result_classify[i] == 1 && rcp.rob_num < rob_pub_num)//irobot
+	for(int j = 0; j < detect_rob_message_last.size(); j++)
 	{
-	  rcp.exist_rob_flag = true;
-	  pe.getEstimate(location_detect[i].x, location_detect[i].y, location_detect[i].width, location_detect[i].height, double(src_3.cols), double(src_3.rows));
-	  rcp.rob_cam_pos_x[rcp.rob_num] = pe.robot_mycam_x;
-	  rcp.rob_cam_pos_y[rcp.rob_num] = pe.robot_mycam_y;
-	  rcp.rob_num++;
-	}
-	else if (result_classify[i] == 2 && rcp.obs_num < obs_pub_num)//obstacle
-	{
-	  rcp.exist_obs_flag = true;
-	  pe.getEstimate(location_detect[i].x, location_detect[i].y, location_detect[i].width, location_detect[i].height, double(src_3.cols), double(src_3.rows));
-	  rcp.obs_cam_pos_x[rcp.obs_num] = pe.robot_mycam_x;
-	  rcp.obs_cam_pos_y[rcp.obs_num] = pe.robot_mycam_y;
-	  rcp.obs_num ++;
+	  if(detect_rob_message[i].label == detect_rob_message_last[j].label)
+	  {
+	    rcp.exist_rob_flag = true;
+	    //estimate position
+	    pe.getEstimate(detect_rob_message[i].location_image.x, detect_rob_message[i].location_image.y, detect_rob_message[i].location_image.width, detect_rob_message[i].location_image.height, double(src_3.cols), double(src_3.rows));
+	    rcp.rob_cam_pos_x[rcp.rob_num] = pe.robot_mycam_x;
+	    rcp.rob_cam_pos_y[rcp.rob_num] = pe.robot_mycam_y;
+	    //estimate velocity
+	    ve.computeVelocity(detect_rob_message[i], detect_rob_message_last[j], src_3, dt);
+	    rcp.rob_cam_vel_x[rcp.rob_num] = ve.velocity_mycam_x;
+	    rcp.rob_cam_vel_y[rcp.rob_num] = ve.velocity_mycam_y;
+	    //drawArrow
+	    if(show_video_flag)
+	    {
+	      Point pStart(detect_rob_message_last[j].location_image.x - ve.delta_img_x, detect_rob_message_last[j].location_image.y - ve.delta_img_y);
+	      Point pEnd(detect_rob_message_last[j].location_image.x, detect_rob_message_last[j].location_image.y);
+	      Scalar color(0, 255, 255);
+	      drawArrow(dst_3, pStart, pEnd, 10, 30, color, 1, 4);
+	      cout<<"rob_dx"<<ve.delta_img_x<<endl;
+	      cout<<"rob_dy"<<ve.delta_img_y<<endl;
+	    }
+	    rcp.rob_num++;
+	  }
 	}
       }
-      
-      //publish
-      msg_pub.publish(rcp);
     }
+    
+    for(int i = 0; i < detect_obs_message.size(); i++)//obstacle
+    {
+      if(rcp.obs_num < obs_pub_num)
+      {
+	for(int j = 0; j < detect_obs_message_last.size(); j++)
+	{
+	  if(detect_obs_message[i].label == detect_obs_message_last[j].label)
+	  {
+	    rcp.exist_obs_flag = true;
+	    //estimate position
+	    pe.getEstimate(detect_obs_message[i].location_image.x, detect_obs_message[i].location_image.y, detect_obs_message[i].location_image.width, detect_obs_message[i].location_image.height, double(src_3.cols), double(src_3.rows));
+	    rcp.obs_cam_pos_x[rcp.obs_num] = pe.robot_mycam_x;
+	    rcp.obs_cam_pos_y[rcp.obs_num] = pe.robot_mycam_y;
+	    //estimate velocity
+	    ve.computeVelocity(detect_obs_message[i], detect_obs_message_last[j], src_3, dt);
+	    rcp.obs_cam_vel_x[rcp.obs_num] = ve.velocity_mycam_x;
+	    rcp.obs_cam_vel_y[rcp.obs_num] = ve.velocity_mycam_y;
+	    cout<<"obs_dx"<<ve.delta_img_x<<endl;
+	    cout<<"obs_dy"<<ve.delta_img_y<<endl;
+	    //drawArrow
+	    if(show_video_flag)
+	    {
+	      Point pStart(detect_obs_message_last[j].location_image.x - ve.delta_img_x, detect_obs_message_last[j].location_image.y - ve.delta_img_y);
+	      Point pEnd(detect_obs_message_last[j].location_image.x, detect_obs_message_last[j].location_image.y);
+	      Scalar color(0, 255, 255);
+	      drawArrow(dst_3, pStart, pEnd, 10, 30, color, 1, 4);
+	      cout<<"rob_dx"<<ve.delta_img_x<<endl;
+	      cout<<"rob_dy"<<ve.delta_img_y<<endl;
+	    }
+	    rcp.obs_num++;
+	  }
+	}
+      }
+    }
+    
+    //publish
+    msg_pub.publish(rcp);
     
     //save and show video
     if(save_result_video_flag)
@@ -389,10 +316,13 @@ public:
       imshow(RESULT_VIDEO_WINDOW_NAME, dst_3);
       waitKey(1);
     }
+    
+    //set last
+    setLast();
   }
   
   void resetState()
-  { 
+  {
     //PositionEstimate
     rcp.exist_rob_flag = false;
     rcp.exist_obs_flag = false;
@@ -402,16 +332,32 @@ public:
     {
       rcp.rob_cam_pos_x[i] = 0;
       rcp.rob_cam_pos_y[i] = 0;
+      rcp.rob_cam_vel_x[i] = 0;
+      rcp.rob_cam_vel_y[i] = 0;
     }
     for(int i = 0; i < obs_pub_num; i++)
     {
       rcp.obs_cam_pos_x[i] = 0;
       rcp.obs_cam_pos_y[i] = 0;
+      rcp.obs_cam_vel_x[i] = 0;
+      rcp.obs_cam_vel_y[i] = 0;
     }
     
     //detect
     location_detect.clear();
+    detect_message.clear();
+    detect_rob_message.clear();
+    detect_obs_message.clear();
     result_classify.clear();
+  }
+  
+  void setLast()
+  {
+    //frame
+    last_time = this_time;
+    //StateEstimate
+    detect_rob_message_last.assign(detect_rob_message.begin(), detect_rob_message.end());
+    detect_obs_message_last.assign(detect_obs_message.begin(), detect_obs_message.end());
   }
 };
 
