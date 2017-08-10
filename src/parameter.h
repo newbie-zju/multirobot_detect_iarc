@@ -57,7 +57,7 @@
 #define HitThreshold 0		//bias of hyperplane
 #define WinStride Size(8,8)	//it must be the integer times of the block stride in HOG descriptor
 #define DetScale 1.1		//reduced proportion of image every time
-#define SuppressionRate 0.5     //value for non maximum suppression
+#define SuppressionRate 0.2     //value for non maximum suppression
 #define BBOverlapRate 0.2	//BBOverlapRate for filter
 
 
@@ -77,8 +77,8 @@
 //#define BackgroundSetFile "../Data/BackgroundSet/"
 //#define HardBackgroundSetFile "../Data/HardBackgroundSet/"
 //#define SetName "0SetName.txt"
-#define DetectSvmName "/home/zj/ros_workspace/src/multirobot_detect/src/SVM_HOG_Detect.xml"
-#define ClassifySvmName "/home/zj/ros_workspace/src/multirobot_detect/src/SVM_HOG_Classify.xml"
+#define DetectSvmName "/home/zj/ros_workspace/src/multirobot_detect_iarc/src/SVM_HOG_Detect.xml"
+#define ClassifySvmName "/home/zj/ros_workspace/src/multirobot_detect_iarc/src/SVM_HOG_Classify.xml"
 
 /*
 #define TrainPerc 0.8	//proportion of train set

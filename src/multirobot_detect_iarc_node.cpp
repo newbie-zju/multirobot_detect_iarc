@@ -183,8 +183,8 @@ public:
     resetState();
     
     //detect
-    //HOG_descriptor_detect.detectMultiScale(src_GPU, location_detect, HitThreshold, WinStride, Size(), DetScale, 2);//gpu
-    HOG_descriptor_detect.detectMultiScale(src_3, location_detect, HitThreshold, WinStride, Size(), DetScale, 2);
+    //HOG_descriptor_detect.detectMultiScale(src_GPU, location_detect, HitThreshold, WinStride, Size(), DetScale, 0.2, true);//gpu
+    HOG_descriptor_detect.detectMultiScale(src_3, location_detect, HitThreshold, WinStride, Size(0,0), DetScale, 0.2, true);
     
     //Non-maximum suppression
     scores = get_scores(src_3, location_detect, svm_detect, descriptor_dim_detect, WinSizeDetect, HOG_descriptor_detect);
