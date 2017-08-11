@@ -363,6 +363,7 @@ public:
 
 int main(int argc, char** argv)
 {
+  cout << "opencv version: "<<CV_VERSION << endl;
   ros::init(argc, argv, "multirobot_detect_iarc_node");//node name
   double loop_rate;
   PositionEstimate pe;//class initializing
