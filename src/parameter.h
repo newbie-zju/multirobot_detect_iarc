@@ -57,8 +57,9 @@
 #define HitThreshold 0		//bias of hyperplane
 #define WinStride Size(8,8)	//it must be the integer times of the block stride in HOG descriptor
 #define DetScale 1.1		//reduced proportion of image every time
-#define SuppressionRate 0.2     //value for non maximum suppression
+#define SuppressionRate 0.4     //value for non maximum suppression
 #define BBOverlapRate 0.2	//BBOverlapRate for filter
+#define detect_resize_rate 1.4	//boxes' resizerate of detect's output
 
 
 //#define TestImage "../Data/TestImage/13.jpg"

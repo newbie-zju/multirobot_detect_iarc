@@ -185,6 +185,7 @@ public:
     //detect
     //HOG_descriptor_detect.detectMultiScale(src_GPU, location_detect, HitThreshold, WinStride, Size(), DetScale, 0.2, true);//gpu
     HOG_descriptor_detect.detectMultiScale(src_3, location_detect, HitThreshold, WinStride, Size(0,0), DetScale, 0.2, true);
+    location_detect = resize_boxes(location_detect, src_3, detect_resize_rate);
     
     //Non-maximum suppression
     scores = get_scores(src_3, location_detect, svm_detect, descriptor_dim_detect, WinSizeDetect, HOG_descriptor_detect);
@@ -224,7 +225,7 @@ public:
 	}
 	else if (temp_result_classify ==3)//background
 	{
-	  rectangle(dst_3, detect_message[i].location_image, Scalar(0,0,255), 3);
+	  //rectangle(dst_3, detect_message[i].location_image, Scalar(0,0,255), 3);
 	}
 	else//other
 	{
@@ -254,12 +255,12 @@ public:
 	    //drawArrow
 	    if(show_video_flag)
 	    {
-	      Point pStart(detect_rob_message_last[j].location_image.x - ve.delta_img_x, detect_rob_message_last[j].location_image.y - ve.delta_img_y);
-	      Point pEnd(detect_rob_message_last[j].location_image.x, detect_rob_message_last[j].location_image.y);
+	      Point pStart(pe.robot_center_x - ve.velocity_img_cx, pe.robot_center_y - ve.velocity_img_cy);
+	      Point pEnd(pe.robot_center_x, pe.robot_center_y);
 	      Scalar color(0, 255, 255);
 	      drawArrow(dst_3, pStart, pEnd, 10, 30, color, 1, 4);
-	      cout<<"rob_dx"<<ve.delta_img_x<<endl;
-	      cout<<"rob_dy"<<ve.delta_img_y<<endl;
+	      cout<<"rob_dx"<<ve.velocity_img_cx<<endl;
+	      cout<<"rob_dy"<<ve.velocity_img_cy<<endl;
 	    }
 	    rcp.rob_num++;
 	  }
@@ -284,17 +285,15 @@ public:
 	    ve.computeVelocity(detect_obs_message[i], detect_obs_message_last[j], src_3, dt);
 	    rcp.obs_cam_vel_x[rcp.obs_num] = ve.velocity_mycam_x;
 	    rcp.obs_cam_vel_y[rcp.obs_num] = ve.velocity_mycam_y;
-	    cout<<"obs_dx"<<ve.delta_img_x<<endl;
-	    cout<<"obs_dy"<<ve.delta_img_y<<endl;
 	    //drawArrow
 	    if(show_video_flag)
 	    {
-	      Point pStart(detect_obs_message_last[j].location_image.x - ve.delta_img_x, detect_obs_message_last[j].location_image.y - ve.delta_img_y);
-	      Point pEnd(detect_obs_message_last[j].location_image.x, detect_obs_message_last[j].location_image.y);
+	      Point pStart(pe.robot_center_x - ve.velocity_img_cx, pe.robot_center_y - ve.velocity_img_cy);
+	      Point pEnd(pe.robot_center_x, pe.robot_center_y);
 	      Scalar color(0, 255, 255);
 	      drawArrow(dst_3, pStart, pEnd, 10, 30, color, 1, 4);
-	      cout<<"rob_dx"<<ve.delta_img_x<<endl;
-	      cout<<"rob_dy"<<ve.delta_img_y<<endl;
+	      cout<<"rob_dx"<<ve.velocity_img_cx<<endl;
+	      cout<<"rob_dy"<<ve.velocity_img_cy<<endl;
 	    }
 	    rcp.obs_num++;
 	  }
