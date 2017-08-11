@@ -11,6 +11,6 @@
   <param name="fu" type="double" value="376.629954"/>
   <param name="fv" type="double" value="494.151786"/>
   <param name="listen_h_flag" type="bool" value="false"/>
-  <param name="loc_h" type="double" value="1.5"/>
+  <param name="loc_h" type="double" value="1.6"/>
   </node>
 </launch>

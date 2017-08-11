@@ -338,7 +338,9 @@ public:
   double postition_mycam_x, postition_mycam_y;
   double postition_mycam_x_last, postition_mycam_y_last;
   double velocity_mycam_x, velocity_mycam_y;
-  double delta_img_x, delta_img_y;
+  int postition_img_cx, postition_img_cy;
+  int postition_img_cx_last, postition_img_cy_last;
+  int velocity_img_cx, velocity_img_cy;
   
   VelocityEstimate(){}
   VelocityEstimate(const PositionEstimate &pe0)
@@ -353,16 +355,27 @@ public:
     pe.getEstimate(message.location_image.x, message.location_image.y, message.location_image.width, message.location_image.height, double(src.cols), double(src.rows));
     postition_mycam_x = pe.robot_mycam_x;
     postition_mycam_y = pe.robot_mycam_y;
+    
+    //this img_center_pos
+    postition_img_cx = pe.robot_center_x;
+    postition_img_cy = pe.robot_center_y;
+    
     //last camPos
     pe.getEstimate(message_last.location_image.x, message_last.location_image.y, message_last.location_image.width, message_last.location_image.height, double(src.cols), double(src.rows));
     postition_mycam_x_last = pe.robot_mycam_x;
     postition_mycam_y_last = pe.robot_mycam_y;
+    
+    //last img_center_pos
+    postition_img_cx_last = pe.robot_center_x;
+    postition_img_cy_last = pe.robot_center_y;
+    
     //camVel
     velocity_mycam_x = (postition_mycam_x - postition_mycam_x_last) / dt;
     velocity_mycam_y = (postition_mycam_y - postition_mycam_y_last) / dt;
-    //imgVel
-    delta_img_x = (message.location_image.x - message_last.location_image.x);
-    delta_img_y = (message.location_image.y - message_last.location_image.y);
+    
+    //img_center_velocity
+    velocity_img_cx = postition_img_cx - postition_img_cx_last;
+    velocity_img_cy = postition_img_cy - postition_img_cy_last;
   }
 };
 
@@ -626,4 +639,27 @@ void drawArrow(Mat& img, Point pStart, Point pEnd, int len, int alpha, Scalar& c
   line(img, pEnd, arrow, color, thickness, lineType);
 }
 
-
+//resize boxes
+vector<Rect> resize_boxes(const vector<Rect> boxes_org, const Mat src, const double rate)
+{
+  vector<Rect> boxes_resize;
+  Rect box_tmp;
+  double x, y, width, height;
+  for(int i = 0; i < boxes_org.size(); i++)
+  {
+    width = boxes_org[i].width * rate;
+    height = boxes_org[i].height * rate;
+    x = boxes_org[i].x - (rate - 1.0) * boxes_org[i].width / 2.0;
+    y = boxes_org[i].y - (rate - 1.0) * boxes_org[i].height / 2.0;
+    if(x > 0.0 & y > 0.0 & x + width < src.cols & y + height < src.rows)
+    {
+      box_tmp = Rect(int(x), int(y), int(width), int(height));
+    }
+    else
+    {
+      box_tmp = boxes_org[i];
+    }
+    boxes_resize.push_back(box_tmp);
+  }
+  return boxes_resize;
+}
