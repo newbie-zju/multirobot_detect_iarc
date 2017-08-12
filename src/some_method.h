@@ -7,6 +7,9 @@
 #include <time.h>
 #include <algorithm>
 #include <ros/ros.h>
+#include <math.h>
+
+//#include <dji_sdk/LocalPosition.h> //dji_sdk
 
 using namespace cv;
 using namespace std;
@@ -252,12 +255,12 @@ public:
     //node
     //sub_loc = nh.subscribe("/dji_sdk/local_position", 10, &PositionEstimate::localPositionCallback,this);//dji_sdk
     //camera
-    if(!nh_param.getParam("camera_pitch", camera_pitch))camera_pitch = 36.0;
+    if(!nh_param.getParam("camera_pitch", camera_pitch))camera_pitch = -36.0;
     if(!nh_param.getParam("fu", fu))fu = 376.629954;
     if(!nh_param.getParam("fv", fv))fv = 494.151786;
     //LocalPosition
     if(!nh_param.getParam("listen_h_flag", listen_h_flag))listen_h_flag = true;
-    if(!nh_param.getParam("loc_h", loc_h))loc_h = 1.5;
+    if(!nh_param.getParam("loc_h", loc_h))loc_h = 1.6;
   }
   
   ~PositionEstimate(){}
@@ -284,6 +287,8 @@ public:
       cout<<"camera_pitch or loc_h is error"<<endl;
       cout<<"camera_pitch: "<<camera_pitch<<endl;
       cout<<"loc_h: "<<loc_h<<endl;
+      robot_mycam_x = -1.0;
+      robot_mycam_y = -1.0;
     }
   }
   /*

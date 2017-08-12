@@ -14,7 +14,6 @@
 #include "some_method.h"
 #include "parameter.h"
 
-//#include <dji_sdk/LocalPosition.h> //dji_sdk
 #include <multirobot_detect_iarc/RobotCamPos.h>
 
 using namespace cv;
